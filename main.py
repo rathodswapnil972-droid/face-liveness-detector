@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import random
 import requests
 import uvicorn
+import sys
 
 # ================= MODEL AUTO DOWNLOAD =================
 
@@ -23,14 +24,20 @@ def download_model():
         return
 
     print("⬇️ Downloading model from Google Drive...")
-    r = requests.get(MODEL_URL, stream=True, timeout=300)
+    try:
+        r = requests.get(MODEL_URL, stream=True, timeout=300)
+        r.raise_for_status()
 
-    with open(MODEL_PATH, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            if chunk:
-                f.write(chunk)
+        with open(MODEL_PATH, "wb") as f:
+            for chunk in r.iter_content(chunk_size=8192):
+                if chunk:
+                    f.write(chunk)
 
-    print("✅ Model downloaded successfully")
+        print("✅ Model downloaded successfully")
+
+    except Exception as e:
+        print("❌ Model download failed:", e)
+        sys.exit(1)
 
 download_model()
 
@@ -38,7 +45,7 @@ download_model()
 
 app = FastAPI()
 
-# Enable CORS
+# Enable CORS (frontend / browser access safe)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,11 +54,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ================= HEALTH CHECK =================
+
+@app.get("/")
+def root():
+    return {"status": "Face Liveness API Running ✅"}
+
 # ================= LOAD MODEL =================
 
 print("📦 Loading model...")
-model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-print("✅ Model loaded")
+try:
+    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+    print("✅ Model loaded")
+except Exception as e:
+    print("❌ Model load failed:", e)
+    sys.exit(1)
 
 CLASS_NAMES = [
     "live_video",
@@ -228,4 +245,5 @@ async def analyze(file: UploadFile = File(...)):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
+    print("🚀 Server starting on port:", port)
     uvicorn.run(app, host="0.0.0.0", port=port)
