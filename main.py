@@ -10,11 +10,13 @@ import requests
 import uvicorn
 
 # ================= MODEL AUTO DOWNLOAD =================
+# ================= MODEL AUTO DOWNLOAD =================
 
-MODEL_URL = "https://drive.google.com/uc?export=download&id=1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
+FILE_ID = "1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
+MODEL_URL = f"https://drive.google.com/uc?export=download&confirm=t&id={FILE_ID}"
+
 MODEL_DIR = "model"
 MODEL_PATH = os.path.join(MODEL_DIR, "liveness_cnn_model.h5")
-
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 def download_model():
@@ -23,10 +25,11 @@ def download_model():
         return
 
     print("⬇️ Downloading model from Google Drive...")
-    r = requests.get(MODEL_URL, stream=True)
+    session = requests.Session()
+    response = session.get(MODEL_URL, stream=True)
 
     with open(MODEL_PATH, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
+        for chunk in response.iter_content(chunk_size=8192):
             if chunk:
                 f.write(chunk)
 
@@ -184,3 +187,4 @@ async def analyze(file: UploadFile = File(...)):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run(app, host="0.0.0.0", port=port)
+
