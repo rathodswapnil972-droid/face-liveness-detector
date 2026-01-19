@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!-- <!DOCTYPE html>
 <html>
 <head>
   <title>Face Liveness Detection</title>
@@ -46,6 +46,63 @@
 <div id="result"></div>
 
 <script src="/static/script.js"></script>
+
+</body>
+</html>
+ -->
+
+
+
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Face Liveness Detection</title>
+
+  <style>
+    body {
+      background: black;
+      color: white;
+      text-align: center;
+      font-family: Arial;
+    }
+
+    video {
+      margin-top: 20px;
+      border-radius: 12px;
+      border: 4px solid #00ff88;
+      width: 420px;
+    }
+
+    #status {
+      margin-top: 15px;
+      font-size: 22px;
+      color: #ffaa00;
+    }
+
+    #result {
+      margin-top: 15px;
+      font-size: 34px;
+      font-weight: bold;
+    }
+
+    .live { color: #00ff88; }
+    .fake { color: red; }
+  </style>
+</head>
+
+<body>
+
+<h1>🎥 Face Liveness Detection</h1>
+
+<video id="video" autoplay muted playsinline></video>
+<canvas id="canvas" hidden></canvas>
+
+<div id="status">Starting camera...</div>
+<div id="result"></div>
+
+<!-- ✅ IMPORTANT FIX -->
+<script src="script.js"></script>
 
 </body>
 </html>
