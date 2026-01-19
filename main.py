@@ -6,35 +6,28 @@ from collections import deque
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import random
-import requests
 import uvicorn
 import sys
+import gdown
 
 # ================= MODEL AUTO DOWNLOAD =================
 
-MODEL_URL = "https://drive.google.com/uc?export=download&id=1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
+MODEL_ID = "1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
 MODEL_DIR = "model"
 MODEL_PATH = os.path.join(MODEL_DIR, "liveness_cnn_model.h5")
 
 os.makedirs(MODEL_DIR, exist_ok=True)
 
 def download_model():
-    if os.path.exists(MODEL_PATH):
+    if os.path.exists(MODEL_PATH) and os.path.getsize(MODEL_PATH) > 5_000_000:
         print("✅ Model already exists")
         return
 
-    print("⬇️ Downloading model from Google Drive...")
+    print("⬇️ Downloading model from Google Drive using gdown...")
     try:
-        r = requests.get(MODEL_URL, stream=True, timeout=300)
-        r.raise_for_status()
-
-        with open(MODEL_PATH, "wb") as f:
-            for chunk in r.iter_content(chunk_size=8192):
-                if chunk:
-                    f.write(chunk)
-
+        url = f"https://drive.google.com/uc?id={MODEL_ID}"
+        gdown.download(url, MODEL_PATH, quiet=False)
         print("✅ Model downloaded successfully")
-
     except Exception as e:
         print("❌ Model download failed:", e)
         sys.exit(1)
@@ -45,7 +38,7 @@ download_model()
 
 app = FastAPI()
 
-# Enable CORS (frontend / browser access safe)
+# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -54,8 +47,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ================= HEALTH CHECK =================
-
+# Health check endpoint (Render port detection)
 @app.get("/")
 def root():
     return {"status": "Face Liveness API Running ✅"}
@@ -167,7 +159,6 @@ async def analyze(file: UploadFile = File(...)):
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-    # ---- FACE CHECK ----
     faces = face_detector.detectMultiScale(gray, 1.3, 5)
 
     if len(faces) == 0:
@@ -176,7 +167,6 @@ async def analyze(file: UploadFile = File(...)):
     if len(faces) > 1:
         return {"status": "blocked", "reason": "Multiple faces detected"}
 
-    # ---- SIGNALS ----
     motion = detect_motion(frame)
     blink = detect_blink(gray)
     texture_score = detect_screen_texture(gray)
@@ -186,7 +176,6 @@ async def analyze(file: UploadFile = File(...)):
     history.append(label)
     motion_history.append(motion)
 
-    # ---- COLLECTING ----
     if len(history) < WINDOW:
         return {
             "status": "collecting",
@@ -194,8 +183,6 @@ async def analyze(file: UploadFile = File(...)):
             "challenge": challenge,
             "blink": blink
         }
-
-    # ================= FINAL DECISION =================
 
     motion_avg = float(np.mean(motion_history))
     challenge_passed = False
@@ -234,10 +221,6 @@ async def analyze(file: UploadFile = File(...)):
         "status": "done",
         "final_result": final_result,
         "reason": reason,
-        "challenge": challenge,
-        "blink": blink,
-        "motion_avg": round(motion_avg, 2),
-        "texture_score": round(texture_score, 1),
         "benchmark": benchmark
     }
 
