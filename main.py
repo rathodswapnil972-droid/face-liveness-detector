@@ -6,13 +6,12 @@ from collections import deque
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 import random
+import requests
 import uvicorn
-import sys
-import gdown
 
 # ================= MODEL AUTO DOWNLOAD =================
 
-MODEL_ID = "1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
+MODEL_URL = "https://drive.google.com/uc?export=download&id=1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
 MODEL_DIR = "model"
 MODEL_PATH = os.path.join(MODEL_DIR, "liveness_cnn_model.h5")
 
@@ -23,14 +22,15 @@ def download_model():
         print("✅ Model already exists")
         return
 
-    print("⬇️ Downloading model from Google Drive using gdown...")
-    try:
-        url = f"https://drive.google.com/uc?id={MODEL_ID}"
-        gdown.download(url, MODEL_PATH, quiet=False)
-        print("✅ Model downloaded successfully")
-    except Exception as e:
-        print("❌ Model download failed:", e)
-        sys.exit(1)
+    print("⬇️ Downloading model from Google Drive...")
+    r = requests.get(MODEL_URL, stream=True)
+
+    with open(MODEL_PATH, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+
+    print("✅ Model downloaded successfully")
 
 download_model()
 
@@ -38,7 +38,6 @@ download_model()
 
 app = FastAPI()
 
-# Enable CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -47,20 +46,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Health check endpoint (Render port detection)
 @app.get("/")
-def root():
-    return {"status": "Face Liveness API Running ✅"}
+def health():
+    return {"status": "Server running 🚀"}
 
 # ================= LOAD MODEL =================
 
 print("📦 Loading model...")
-try:
-    model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-    print("✅ Model loaded")
-except Exception as e:
-    print("❌ Model load failed:", e)
-    sys.exit(1)
+model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+print("✅ Model loaded")
 
 CLASS_NAMES = [
     "live_video",
@@ -71,7 +65,7 @@ CLASS_NAMES = [
 
 IMG_SIZE = 128
 
-# ================= OPENCV DETECTORS =================
+# ================= OPENCV =================
 
 face_detector = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
@@ -81,9 +75,9 @@ eye_detector = cv2.CascadeClassifier(
     cv2.data.haarcascades + "haarcascade_eye.xml"
 )
 
-# ================= SESSION VARIABLES =================
+# ================= SESSION =================
 
-WINDOW = 15
+WINDOW = 10
 
 history = deque(maxlen=WINDOW)
 motion_history = deque(maxlen=WINDOW)
@@ -93,7 +87,6 @@ blink_counter = 0
 eye_visible_prev = True
 
 challenge = random.choice(["BLINK", "MOVE_HEAD"])
-benchmark = {"total": 0, "live": 0, "fake": 0}
 
 # ================= UTILS =================
 
@@ -134,10 +127,6 @@ def detect_blink(gray):
     eye_visible_prev = eye_visible_now
     return blink_counter
 
-def detect_screen_texture(gray):
-    lap_var = cv2.Laplacian(gray, cv2.CV_64F).var()
-    return lap_var
-
 def predict_ai(frame):
     inp = preprocess(frame)
     preds = model.predict(inp, verbose=0)[0]
@@ -148,9 +137,6 @@ def predict_ai(frame):
 
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
-
-    global benchmark, challenge
-
     img = await file.read()
     frame = cv2.imdecode(np.frombuffer(img, np.uint8), 1)
 
@@ -158,75 +144,43 @@ async def analyze(file: UploadFile = File(...)):
         return {"status": "error"}
 
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
     faces = face_detector.detectMultiScale(gray, 1.3, 5)
 
     if len(faces) == 0:
         return {"status": "blocked", "reason": "No face detected"}
 
-    if len(faces) > 1:
-        return {"status": "blocked", "reason": "Multiple faces detected"}
-
     motion = detect_motion(frame)
     blink = detect_blink(gray)
-    texture_score = detect_screen_texture(gray)
-
     label, conf = predict_ai(frame)
 
     history.append(label)
     motion_history.append(motion)
 
     if len(history) < WINDOW:
-        return {
-            "status": "collecting",
-            "frames": len(history),
-            "challenge": challenge,
-            "blink": blink
-        }
+        return {"status": "collecting", "frames": len(history)}
 
     motion_avg = float(np.mean(motion_history))
-    challenge_passed = False
 
-    if challenge == "BLINK" and blink >= 1:
-        challenge_passed = True
-
-    if challenge == "MOVE_HEAD" and motion_avg > 3.0:
-        challenge_passed = True
-
-    if texture_score > 1200:
+    if label != "live_video":
         final_result = "FAKE"
-        reason = "Mobile Screen Texture Detected"
-
-    elif not challenge_passed:
-        final_result = "FAKE"
-        reason = f"Challenge Failed ({challenge})"
-
-    elif label in ["fake_photo", "fake_mask_video", "fake_deepfake_video"]:
-        final_result = "FAKE"
-        reason = f"Model Detected: {label}"
-
-    else:
+        reason = label
+    elif blink >= 1 or motion_avg > 2.0:
         final_result = "VERIFIED"
-        reason = "Live Human Verified"
-
-    benchmark["total"] += 1
-    if final_result == "VERIFIED":
-        benchmark["live"] += 1
+        reason = "Live movement detected"
     else:
-        benchmark["fake"] += 1
+        final_result = "FAKE"
+        reason = "No liveness movement"
 
     reset_session()
 
     return {
         "status": "done",
         "final_result": final_result,
-        "reason": reason,
-        "benchmark": benchmark
+        "reason": reason
     }
 
 # ================= RUN SERVER =================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
-    print("🚀 Server starting on port:", port)
     uvicorn.run(app, host="0.0.0.0", port=port)
