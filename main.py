@@ -11,6 +11,17 @@ import random
 # ================= APP =================
 app = FastAPI()
 
+from fastapi.middleware.cors import CORSMiddleware
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # sab domains allow
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_DIR = os.path.join(BASE_DIR, "..", "frontend")
 
@@ -209,3 +220,4 @@ async def analyze(file: UploadFile = File(...)):
         "texture_score": round(texture_score, 1),
         "benchmark": benchmark
     }
+
