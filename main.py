@@ -8,6 +8,31 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 import random
 
+import requests
+
+MODEL_URL = "https://drive.google.com/uc?export=download&id=1c1HTyzpBDRWGojfhdI8ZCdkT-JXDwcd-"
+MODEL_DIR = "model"
+MODEL_PATH = os.path.join(MODEL_DIR, "liveness_cnn_model.h5")
+
+os.makedirs(MODEL_DIR, exist_ok=True)
+
+def download_model():
+    if os.path.exists(MODEL_PATH):
+        print("✅ Model already exists")
+        return
+
+    print("⬇️ Downloading model from Google Drive...")
+    r = requests.get(MODEL_URL, stream=True)
+    with open(MODEL_PATH, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            if chunk:
+                f.write(chunk)
+
+    print("✅ Model downloaded successfully")
+
+download_model()
+
+
 # ================= APP =================
 app = FastAPI()
 
@@ -227,6 +252,7 @@ import os
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
 
 
 
